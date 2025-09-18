@@ -56,6 +56,7 @@ export default function TeacherAttendancePage() {
   const [showQRCode, setShowQRCode] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isStudentListOpen, setIsStudentListOpen] = useState(false);
+  const [scannedRecords, setScannedRecords] = useState<any[]>([]);
 
   const {
     classes,
@@ -106,6 +107,7 @@ export default function TeacherAttendancePage() {
           })
         : "-",
       method: attendanceRecord?.method || "-",
+      isQRScanned: attendanceRecord?.method === "qr",
     };
   });
 
@@ -154,6 +156,8 @@ export default function TeacherAttendancePage() {
         if (!text) return;
         const payload = JSON.parse(text);
         if (payload?.type !== "attendance" || !payload?.studentId) return;
+        
+        // Mark attendance
         markAttendance({
           studentId: payload.studentId,
           classId: selectedClass,
@@ -161,12 +165,30 @@ export default function TeacherAttendancePage() {
           status: "present",
           method: "qr",
         });
+
+        // Add to scanned records for display
+        const student = students.find(s => s.id === payload.studentId);
+        const newRecord = {
+          id: Date.now().toString(),
+          studentId: payload.studentId,
+          studentName: student?.name || "Unknown Student",
+          rollNo: student?.studentId || payload.studentId,
+          timestamp: new Date().toISOString(),
+          method: "qr",
+          status: "present"
+        };
+        
+        setScannedRecords(prev => [newRecord, ...prev]);
         setIsScannerOpen(false);
+        
+        // Show success message
+        alert(`✅ QR Scan successful!\n${student?.name} has been marked present via QR code.`);
+        console.log(`✅ QR Scan successful: ${student?.name} marked present`);
       } catch (e) {
         console.error("QR parse error", e);
       }
     },
-    [markAttendance, selectedClass, today]
+    [markAttendance, selectedClass, today, students]
   );
 
   return (
@@ -366,20 +388,20 @@ export default function TeacherAttendancePage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Late</CardTitle>
-              <Calendar className="h-4 w-4 text-chart-1" />
+              <CardTitle className="text-sm font-medium">QR Scanned</CardTitle>
+              <QrCode className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-chart-1">
-                {attendanceStats.late}
+              <div className="text-2xl font-bold text-green-600">
+                {studentsWithAttendance.filter(s => s.isQRScanned).length}
               </div>
               <p className="text-xs text-muted-foreground">
-                {attendanceStats.total > 0
+                {attendanceStats.present > 0
                   ? Math.round(
-                      (attendanceStats.late / attendanceStats.total) * 100
+                      (studentsWithAttendance.filter(s => s.isQRScanned).length / attendanceStats.present) * 100
                     )
                   : 0}
-                % of class
+                % of present
               </p>
             </CardContent>
           </Card>
@@ -388,6 +410,7 @@ export default function TeacherAttendancePage() {
         <Tabs defaultValue="current" className="space-y-6">
           <TabsList>
             <TabsTrigger value="current">Current Session</TabsTrigger>
+            <TabsTrigger value="scanned">Scanned Records</TabsTrigger>
             <TabsTrigger value="face-recognition">Face Recognition</TabsTrigger>
             <TabsTrigger value="history">Attendance History</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -454,9 +477,14 @@ export default function TeacherAttendancePage() {
                               <p className="text-sm font-medium">
                                 {student.time}
                               </p>
-                              <p className="text-xs text-muted-foreground capitalize">
-                                {student.method}
-                              </p>
+                              <div className="flex items-center gap-1">
+                                <p className="text-xs text-muted-foreground capitalize">
+                                  {student.method}
+                                </p>
+                                {student.isQRScanned && (
+                                  <QrCode className="w-3 h-3 text-green-600" />
+                                )}
+                              </div>
                             </div>
                           )}
                           <div className="flex items-center gap-2">
@@ -470,13 +498,16 @@ export default function TeacherAttendancePage() {
                               }
                               className={
                                 student.status === "present"
-                                  ? "bg-chart-2/10 text-chart-2"
+                                  ? student.isQRScanned
+                                    ? "bg-green-100 text-green-800 border-green-200"
+                                    : "bg-chart-2/10 text-chart-2"
                                   : student.status === "late"
                                   ? "bg-chart-1/10 text-chart-1"
                                   : "bg-chart-4/10 text-chart-4"
                               }
                             >
                               {student.status}
+                              {student.isQRScanned && " (QR)"}
                             </Badge>
                             <Button
                               variant="outline"
@@ -496,6 +527,84 @@ export default function TeacherAttendancePage() {
                         {selectedClass
                           ? "No students found"
                           : "Please select a class to view students"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="scanned">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <CardTitle>QR Scanned Attendance</CardTitle>
+                    <CardDescription>
+                      Real-time list of students who scanned their QR codes
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-green-100 text-green-800">
+                      {scannedRecords.length} Scanned Today
+                    </Badge>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setScannedRecords([])}
+                    >
+                      Clear List
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {scannedRecords.length > 0 ? (
+                    scannedRecords.map((record) => (
+                      <div
+                        key={record.id}
+                        className="flex items-center justify-between p-4 rounded-lg border border-green-200 bg-green-50"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <QrCode className="w-5 h-5 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-green-900">{record.studentName}</p>
+                            <p className="text-sm text-green-700">
+                              Roll No: {record.rollNo}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-green-900">
+                              {new Date(record.timestamp).toLocaleTimeString("en-US", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </p>
+                            <p className="text-xs text-green-600 capitalize">
+                              {record.method} scan
+                            </p>
+                          </div>
+                          <Badge className="bg-green-100 text-green-800 border-green-200">
+                            Present
+                          </Badge>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <QrCode className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">
+                        No QR scans recorded yet
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Students can scan their QR codes to appear here
                       </p>
                     </div>
                   )}
