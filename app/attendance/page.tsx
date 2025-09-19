@@ -1,9 +1,11 @@
 // app/attendance/page.tsx - CREATE THIS NEW FILE
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigation } from "@/components/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store";
 import { AuthGuard } from "@/components/auth-guard";
 import {
@@ -12,6 +14,9 @@ import {
   XCircle,
   Clock,
   TrendingUp,
+  QrCode,
+  Copy,
+  Download,
 } from "lucide-react";
 
 export default function AttendancePage() {
@@ -22,13 +27,39 @@ export default function AttendancePage() {
     getAttendanceByStudent,
     initializeMockData,
     isAuthenticated,
+    generateStudentQR,
   } = useAppStore();
+
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [qrCodeData, setQrCodeData] = useState<string>("");
 
   useEffect(() => {
     if (isAuthenticated && currentUser && classes.length === 0) {
       initializeMockData();
     }
   }, [isAuthenticated, currentUser, classes.length, initializeMockData]);
+
+  const generateQRCode = () => {
+    if (currentUser) {
+      const qrData = generateStudentQR(currentUser.id);
+      setQrCodeData(qrData);
+      setShowQRCode(true);
+    }
+  };
+
+  const copyQRData = () => {
+    navigator.clipboard.writeText(qrCodeData);
+  };
+
+  const downloadQRData = () => {
+    const blob = new Blob([qrCodeData], { type: "text/plain" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `qr_code_${currentUser?.id || "student"}.txt`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   if (!isAuthenticated || !currentUser) {
     return (
@@ -125,6 +156,86 @@ export default function AttendancePage() {
               Track your class attendance and participation
             </p>
           </div>
+
+          {/* QR Code Generation Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <QrCode className="h-5 w-5" />
+                Your Attendance QR Code
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  Generate your personal QR code for attendance scanning. Show
+                  this QR code to your instructor during class.
+                </p>
+
+                {!showQRCode ? (
+                  <Button
+                    onClick={generateQRCode}
+                    className="flex items-center gap-2"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Generate My QR Code
+                  </Button>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-muted rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">
+                          QR Code Data:
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={copyQRData}
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-1"
+                          >
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </Button>
+                          <Button
+                            onClick={downloadQRData}
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-1"
+                          >
+                            <Download className="h-3 w-3" />
+                            Download
+                          </Button>
+                        </div>
+                      </div>
+                      <code className="text-xs break-all bg-background p-2 rounded block">
+                        {qrCodeData}
+                      </code>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="inline-block p-4 bg-white border-2 border-dashed border-gray-300 rounded-lg">
+                        <div className="text-6xl">📱</div>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Show this QR code to your instructor
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center">
+                      <Button
+                        onClick={() => setShowQRCode(false)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Hide QR Code
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Overall Statistics */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

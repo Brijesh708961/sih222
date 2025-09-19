@@ -9,12 +9,12 @@ interface User {
   userType: "student" | "faculty" | "admin";
 }
 
-// lib/store.ts - UPDATE Class interface
+// Class interface
 interface Class {
   id: string;
   name: string;
   instructor: string;
-  students: string[]; // ✅ ADD this line - array of student IDs
+  students: string[]; // Array of student IDs
   schedule: Array<{
     day: string;
     startTime: string;
@@ -23,14 +23,22 @@ interface Class {
   }>;
 }
 
+// Attendance Record interface
 interface AttendanceRecord {
   id: string;
   studentId: string;
   classId: string;
   date: string;
   status: "present" | "absent" | "late";
-  timestamp?: string;
-  method?: string;
+  method: "manual" | "qr" | "face" | "rfid";
+  timestamp: string;
+  qrPayload?: any;
+  deviceInfo?: any;
+  ipAddress?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 interface LearningTask {
@@ -75,7 +83,14 @@ interface AppState {
     status: "present" | "absent" | "late";
     date?: string;
     method?: string;
+    qrPayload?: any;
+    deviceInfo?: any;
+    timestamp?: string;
   }) => void;
+
+  // QR Code methods
+  generateStudentQR: (studentId: string) => string;
+  validateQRCode: (qrData: string) => boolean;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -142,8 +157,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { isAuthenticated, currentUser } = get();
     if (!isAuthenticated || !currentUser) return;
 
-    // mock classes
-    // In the initializeMockData function, UPDATE the mockClasses array:
+    // Mock classes
     const mockClasses: Class[] = [
       {
         id: "1",
@@ -155,7 +169,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           "student3",
           "student4",
           "student5",
-        ], // ✅ ADD this line
+        ],
         schedule: [
           {
             day: "Monday",
@@ -181,7 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: "2",
         name: "Data Structures & Algorithms",
         instructor: "Prof. Williams",
-        students: [currentUser.id, "student2", "student3", "student6"], // ✅ ADD this line
+        students: [currentUser.id, "student2", "student3", "student6"],
         schedule: [
           {
             day: "Tuesday",
@@ -201,7 +215,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: "3",
         name: "Database Management Systems",
         instructor: "Dr. Brown",
-        students: [currentUser.id, "student4", "student5", "student7"], // ✅ ADD this line
+        students: [currentUser.id, "student4", "student5", "student7"],
         schedule: [
           {
             day: "Monday",
@@ -221,7 +235,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: "4",
         name: "Web Development",
         instructor: "Ms. Davis",
-        students: [currentUser.id, "student3", "student6", "student8"], // ✅ ADD this line
+        students: [currentUser.id, "student3", "student6", "student8"],
         schedule: [
           {
             day: "Tuesday",
@@ -388,34 +402,84 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  // Mark attendance for a student
+  // Enhanced Mark attendance for a student
   markAttendance: (args: {
     studentId: string;
     classId: string;
     status: "present" | "absent" | "late";
     date?: string;
     method?: string;
+    qrPayload?: any;
+    deviceInfo?: any;
+    timestamp?: string;
   }) => {
     const { studentId, classId, status } = args;
     const newAttendanceRecord: AttendanceRecord = {
-      id: Date.now().toString(),
+      id: `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       studentId,
       classId,
       date: args.date || new Date().toISOString().split("T")[0],
       status,
-      timestamp: new Date().toISOString(),
-      method: args.method || "manual",
+      timestamp: args.timestamp || new Date().toISOString(),
+      method: (args.method as any) || "manual",
+      qrPayload: args.qrPayload,
+      deviceInfo: args.deviceInfo,
     };
 
-    set((state) => ({
-      attendanceRecords: [...state.attendanceRecords, newAttendanceRecord],
-    }));
+    set((state) => {
+      // Remove existing record for same student, class, and date if exists
+      const filteredRecords = state.attendanceRecords.filter(
+        (record) =>
+          !(
+            record.studentId === newAttendanceRecord.studentId &&
+            record.classId === newAttendanceRecord.classId &&
+            record.date === newAttendanceRecord.date
+          )
+      );
+
+      return {
+        attendanceRecords: [...filteredRecords, newAttendanceRecord],
+      };
+    });
+
+    // Persist to localStorage
+    const records = get().attendanceRecords;
+    localStorage.setItem("attendanceRecords", JSON.stringify(records));
   },
 
   // Get attendance records for a specific class
   getAttendanceByClass: (classId: string) => {
     const { attendanceRecords } = get();
     return attendanceRecords.filter((record) => record.classId === classId);
+  },
+
+  // Generate QR code data for student
+  generateStudentQR: (studentId: string) => {
+    const qrData = {
+      studentId,
+      timestamp: Date.now(),
+      type: "attendance",
+      version: "1.0",
+    };
+    return JSON.stringify(qrData);
+  },
+
+  // Validate QR code format
+  validateQRCode: (qrData: string) => {
+    try {
+      const payload = JSON.parse(qrData);
+      return (
+        payload &&
+        typeof payload === "object" &&
+        payload.type === "attendance" &&
+        payload.studentId &&
+        typeof payload.studentId === "string" &&
+        payload.timestamp &&
+        typeof payload.timestamp === "number"
+      );
+    } catch {
+      return false;
+    }
   },
 }));
 
